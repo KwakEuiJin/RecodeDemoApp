@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
@@ -28,6 +29,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private var record: MediaRecorder? = null
     private var fileName: String? = null
+    private var player: MediaPlayer? = null
     private var state = RecorderState.Release
 
     enum class RecorderState {
@@ -44,6 +46,22 @@ class MainActivity : AppCompatActivity() {
         initViews()
     }
 
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        val audioRecordPermissionGranted = (requestCode == REQUEST_RECORD_AUDIO_CODE)
+                && (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
+
+        if (audioRecordPermissionGranted) {
+            initRecord(true)
+        } else {
+            if (ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.RECORD_AUDIO)) {
+                showPermissionRationalDialog()
+            } else {
+                showPermissionSettingDialog()
+            }
+        }
+    }
+
     private fun initViews() {
         binding.recordButton.setOnClickListener {
             when (state) {
@@ -58,7 +76,26 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+
+        binding.playButton.setOnClickListener {
+            when (state) {
+                RecorderState.Release -> {
+                    onPlay(true)
+                }
+                else ->{}
+            }
+        }
+
+        binding.playButton.setOnClickListener {
+            when (state) {
+                RecorderState.Playing -> {
+                    onPlay(false)
+                }
+                else -> {}
+            }
+        }
     }
+
 
     private fun checktAudioPermission() {
         when {
@@ -81,30 +118,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        val audioRecordPermissionGranted = (requestCode == REQUEST_RECORD_AUDIO_CODE)
-                && (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
-
-        if (audioRecordPermissionGranted) {
-            initRecord(true)
-        } else {
-            if (ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.RECORD_AUDIO)) {
-                showPermissionRationalDialog()
-            } else {
-                showPermissionSettingDialog()
-            }
-        }
-    }
-
     private fun initRecord(isPlayable: Boolean) {
         if (isPlayable) {
             startRecord()
         } else {
             stopRecord()
         }
-
-
     }
 
     private fun startRecord() {
@@ -151,6 +170,48 @@ class MainActivity : AppCompatActivity() {
 
         }
 
+    }
+
+    private fun onPlay(start: Boolean) {
+        if (start) {
+            startPlaying()
+        } else {
+            stopPlaying()
+        }
+    }
+
+
+    private fun startPlaying() {
+        state = RecorderState.Playing
+        player = MediaPlayer().apply {
+            try {
+                setDataSource(fileName)
+                prepare()
+            } catch (e: Exception) {
+                Log.e("MediaPlayer","Exception: $e")
+            }
+            start()
+        }
+        player?.setOnCompletionListener {
+            stopPlaying()
+        }
+
+        with(binding) {
+            recordButton.isEnabled = false
+            recordButton.alpha = 0.3f
+        }
+    }
+
+    private fun stopPlaying() {
+        state = RecorderState.Release
+        player?.release()
+        player = null
+
+        binding.recordButton.apply {
+            isEnabled = true
+            alpha = 1.0f
+
+        }
     }
 
     private fun showPermissionRationalDialog() {
