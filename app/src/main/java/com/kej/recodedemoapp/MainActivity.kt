@@ -12,7 +12,6 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
-import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -31,6 +30,7 @@ class MainActivity : AppCompatActivity() {
     private var fileName: String? = null
     private var player: MediaPlayer? = null
     private var state = RecorderState.Release
+    private lateinit var timer: Timer
 
     enum class RecorderState {
         Release,
@@ -38,12 +38,27 @@ class MainActivity : AppCompatActivity() {
         Playing
     }
 
-    @RequiresApi(Build.VERSION_CODES.M)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = DataBindingUtil.setContentView(this, R.layout.activity_main)
         fileName = "${externalCacheDir?.absolutePath}/audiotest.3gp"
         initViews()
+        timer = Timer {
+            runTimer(it)
+        }
+    }
+
+    private fun runTimer(duration: Long) {
+        val millisecond = duration % 1000
+        val second = (duration / 1000) % 60
+        val minute = (duration/1000) / 60
+        binding.timeTextView.text = String.format("%02d: %02d: %02d", minute, second, millisecond/10)
+
+        if (state == RecorderState.Playing) {
+            binding.waveFormView.replayAmplitude(duration.toInt())
+        } else if (state == RecorderState.Recording) {
+            binding.waveFormView.addAmplitude(record?.maxAmplitude?.toFloat() ?:0f)
+        }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -66,7 +81,7 @@ class MainActivity : AppCompatActivity() {
         binding.recordButton.setOnClickListener {
             when (state) {
                 RecorderState.Release -> {
-                    checktAudioPermission()
+                    checkAudioPermission()
                 }
                 RecorderState.Recording -> {
                     initRecord(false)
@@ -77,33 +92,33 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+
+        binding.stopButton.setOnClickListener {
+            Log.d(",","")
+        }
+
         binding.playButton.setOnClickListener {
             when (state) {
                 RecorderState.Release -> {
                     onPlay(true)
                 }
+                RecorderState.Playing -> {
+                    onPlay(false)
+                }
                 else ->{}
             }
         }
 
-        binding.playButton.setOnClickListener {
-            when (state) {
-                RecorderState.Playing -> {
-                    onPlay(false)
-                }
-                else -> {}
-            }
-        }
     }
 
 
-    private fun checktAudioPermission() {
+    private fun checkAudioPermission() {
         when {
             ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.RECORD_AUDIO
             ) == PackageManager.PERMISSION_GRANTED -> {
-                // You can use the API that requires the permission.
+                initRecord(true)
             }
             ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.RECORD_AUDIO) -> {
                 showPermissionRationalDialog()
@@ -144,7 +159,9 @@ class MainActivity : AppCompatActivity() {
             }
             start()
         }
-        state = RecorderState.Playing
+        binding.waveFormView.clearData()
+        timer.start()
+        state = RecorderState.Recording
 
         with(binding) {
             recordButton.setImageDrawable(ContextCompat.getDrawable(this@MainActivity, R.drawable.ic_baseline_stop_24))
@@ -155,19 +172,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun stopRecord() {
+
         record?.apply {
             stop()
             release()
         }
         record = null
+        timer.stop()
         state = RecorderState.Release
 
         with(binding) {
             recordButton.setImageDrawable(ContextCompat.getDrawable(this@MainActivity, R.drawable.ic_baseline_fiber_manual_record_24))
             recordButton.imageTintList = ColorStateList.valueOf(Color.RED)
-            binding.playButton.isEnabled = true
+            playButton.isEnabled = true
             playButton.alpha = 1.0f
-
         }
 
     }
@@ -196,6 +214,9 @@ class MainActivity : AppCompatActivity() {
             stopPlaying()
         }
 
+        binding.waveFormView.clearWave()
+        timer.start()
+
         with(binding) {
             recordButton.isEnabled = false
             recordButton.alpha = 0.3f
@@ -210,8 +231,8 @@ class MainActivity : AppCompatActivity() {
         binding.recordButton.apply {
             isEnabled = true
             alpha = 1.0f
-
         }
+        timer.stop()
     }
 
     private fun showPermissionRationalDialog() {
